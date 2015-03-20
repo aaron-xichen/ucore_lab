@@ -3,7 +3,7 @@ EMPTY	:=
 SPACE	:= $(EMPTY) $(EMPTY)
 SLASH	:= /
 
-V       := @
+V       :=@
 
 # try to infer the correct GCCPREFX
 ifndef GCCPREFIX
@@ -42,7 +42,7 @@ endif
 
 # define compiler and flags
 
-HOSTCC		:= gcc
+HOSTCC		:= gcc 
 HOSTCFLAGS	:= -g -Wall -O2
 
 CC		:= $(GCCPREFIX)gcc
@@ -191,17 +191,25 @@ ifeq ($(call match,$(MAKECMDGOALS),$(IGNORE_ALLDEPS)),0)
 -include $(ALLDEPS)
 endif
 
+# cd to current directory and execute command in new window
+runcommand = $(shell osascript -e 'tell application "Terminal" to do script "$(CDPWD);$1"')
 # files for grade script
 
 TARGETS: $(TARGETS)
 all: $(TARGETS)
 .DEFAULT_GOAL := TARGETS
 
+# command
+CDPWD := cd $(shell pwd)
+LAB1MON = $(QEMU) -S -s -d in_asm -D $(BINDIR)/q.log -monitor stdio -hda $< -serial null
+LAB1INIT = gdb -q -x tools/lab1init
+
 .PHONY: qemu qemu-nox debug debug-nox
+
 lab1-mon: $(UCOREIMG)
-	$(V)$(TERMINAL) -e "$(QEMU) -S -s -d in_asm -D $(BINDIR)/q.log -monitor stdio -hda $< -serial null"
-	$(V)sleep 2
-	$(V)$(TERMINAL) -e "gdb -q -x tools/lab1init"
+	$(call runcommand, $(LAB1MON))
+	sleep 1
+	$(call runcommand, $(LAB1INIT))
 debug-mon: $(UCOREIMG)
 #	$(V)$(QEMU) -S -s -monitor stdio -hda $< -serial null &
 	$(V)$(TERMINAL) -e "$(QEMU) -S -s -monitor stdio -hda $< -serial null"
@@ -214,7 +222,9 @@ qemu: $(UCOREIMG)
 
 qemu-nox: $(UCOREIMG)
 	$(V)$(QEMU) -serial mon:stdio -hda $< -nographic
-TERMINAL        :=gnome-terminal
+# TERMINAL        :=gnome-terminal
+# TERMINAL        :=
+TERMINAL	:= osascript -e tell
 gdb: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null
 debug: $(UCOREIMG)
