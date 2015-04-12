@@ -288,8 +288,23 @@ read_eip(void) {
  * Note that, the length of ebp-chain is limited. In boot/bootasm.S, before jumping
  * to the kernel entry, the value of ebp has been set to zero, that's the boundary.
  * */
+
 void
 print_stackframe(void) {
+    uint32_t ebp = read_ebp();
+    uint32_t eip = read_eip();
+    int i,j=0;
+    for(i=0; i<STACKFRAME_DEPTH; i++){
+        cprintf("ebp:0x%08x eip:0x%08x args:", ebp, eip);
+        uint32_t *args = (uint32_t *)ebp + 2;
+        for(j=0; j<4; j++){
+            cprintf("0x%08x ", args[j]);
+        }
+        cprintf("\n");
+        print_debuginfo(eip-1);
+        eip = ((uint32_t *)ebp)[1];
+        ebp = ((uint32_t *)ebp)[0];
+    }
      /* LAB1 YOUR CODE : STEP 1 */
      /* (1) call read_ebp() to get the value of ebp. the type is (uint32_t);
       * (2) call read_eip() to get the value of eip. the type is (uint32_t);

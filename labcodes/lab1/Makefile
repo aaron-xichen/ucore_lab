@@ -3,9 +3,8 @@ EMPTY	:=
 SPACE	:= $(EMPTY) $(EMPTY)
 SLASH	:= /
 
-V       := @
-#need llvm/cang-3.5+
-#USELLVM := 1
+V       :=@
+
 # try to infer the correct GCCPREFX
 ifndef GCCPREFIX
 GCCPREFIX := $(shell if i386-elf-objdump -i 2>&1 | grep '^elf32-i386$$' >/dev/null 2>&1; \
@@ -28,8 +27,6 @@ QEMU := $(shell if which qemu-system-i386 > /dev/null; \
 	then echo 'qemu-system-i386'; exit; \
 	elif which i386-elf-qemu > /dev/null; \
 	then echo 'i386-elf-qemu'; exit; \
-	elif which qemu > /dev/null; \
-	then echo 'qemu'; exit; \
 	else \
 	echo "***" 1>&2; \
 	echo "*** Error: Couldn't find a working QEMU executable." 1>&2; \
@@ -44,20 +41,13 @@ endif
 .DELETE_ON_ERROR:
 
 # define compiler and flags
-ifndef  USELLVM
-HOSTCC		:= gcc
+
+HOSTCC		:= gcc 
 HOSTCFLAGS	:= -g -Wall -O2
+
 CC		:= $(GCCPREFIX)gcc
 CFLAGS	:= -fno-builtin -Wall -ggdb -m32 -gstabs -nostdinc $(DEFS)
 CFLAGS	+= $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
-else
-HOSTCC		:= clang
-HOSTCFLAGS	:= -g -Wall -O2
-CC		:= clang
-CFLAGS	:= -fno-builtin -Wall -g -m32 -mno-sse -nostdinc $(DEFS)
-CFLAGS	+= $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
-endif
-
 CTYPE	:= c S
 
 LD      := $(GCCPREFIX)ld
@@ -162,6 +152,7 @@ $(bootblock): $(call toobj,$(bootfiles)) | $(call totarget,sign)
 	@echo + ld $@
 	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 $^ -o $(call toobj,bootblock)
 	@$(OBJDUMP) -S $(call objfile,bootblock) > $(call asmfile,bootblock)
+	@$(OBJDUMP) -t $(call objfile,bootblock) | $(SED) '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $(call symfile,bootblock)
 	@$(OBJCOPY) -S -O binary $(call objfile,bootblock) $(call outfile,bootblock)
 	@$(call totarget,sign) $(call outfile,bootblock) $(bootblock)
 
@@ -200,13 +191,29 @@ ifeq ($(call match,$(MAKECMDGOALS),$(IGNORE_ALLDEPS)),0)
 -include $(ALLDEPS)
 endif
 
+# cd to current directory and execute command in new window
+runcommand = $(shell osascript -e 'tell application "Terminal" to do script "$(CDPWD);$1"')
 # files for grade script
 
 TARGETS: $(TARGETS)
-
+all: $(TARGETS)
 .DEFAULT_GOAL := TARGETS
 
+# command
+CDPWD := cd $(shell pwd)
+LAB1MON = $(QEMU) -S -s -d in_asm -D $(BINDIR)/q.log -monitor stdio -hda $< -serial null
+LAB1INIT = gdb -q -x tools/lab1init
+
 .PHONY: qemu qemu-nox debug debug-nox
+
+lab1-mon: $(UCOREIMG)
+	$(call runcommand, $(LAB1MON))
+	sleep 1
+	$(call runcommand, $(LAB1INIT))
+debug-mon: $(UCOREIMG)
+	$(V)$(TERMINAL) -e "$(QEMU) -S -s -monitor stdio -hda $< -serial null"
+	$(V)sleep 2
+	$(V)$(TERMINAL) -e "gdb -q -x tools/moninit"
 qemu-mon: $(UCOREIMG)
 	$(V)$(QEMU) -monitor stdio -hda $< -serial null
 qemu: $(UCOREIMG)
@@ -214,11 +221,13 @@ qemu: $(UCOREIMG)
 
 qemu-nox: $(UCOREIMG)
 	$(V)$(QEMU) -serial mon:stdio -hda $< -nographic
-TERMINAL        :=gnome-terminal
+TERMINAL	:= osascript -e tell
+gdb: $(UCOREIMG)
+	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null
 debug: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -parallel stdio -hda $< -serial null &
 	$(V)sleep 2
-	$(V)$(TERMINAL) -e "gdb -q -tui -x tools/gdbinit"
+	$(V)$(TERMINAL)  -e "cgdb -q -x tools/gdbinit"
 	
 debug-nox: $(UCOREIMG)
 	$(V)$(QEMU) -S -s -serial mon:stdio -hda $< -nographic &
@@ -245,9 +254,9 @@ touch:
 print-%:
 	@echo $($(shell echo $(patsubst print-%,%,$@) | $(TR) [a-z] [A-Z]))
 
-.PHONY: clean dist-clean handin packall tags
+.PHONY: clean dist-clean handin packall
 clean:
-	$(V)$(RM) $(GRADE_GDB_IN) $(GRADE_QEMU_OUT) cscope* tags
+	$(V)$(RM) $(GRADE_GDB_IN) $(GRADE_QEMU_OUT)
 	-$(RM) -r $(OBJDIR) $(BINDIR)
 
 dist-clean: clean
@@ -260,9 +269,3 @@ packall: clean
 	@$(RM) -f $(HANDIN)
 	@tar -czf $(HANDIN) `find . -type f -o -type d | grep -v '^\.*$$' | grep -vF '$(HANDIN)'`
 
-tags:
-	@echo TAGS ALL
-	$(V)rm -f cscope.files cscope.in.out cscope.out cscope.po.out tags
-	$(V)find . -type f -name "*.[chS]" >cscope.files
-	$(V)cscope -bq 
-	$(V)ctags -L cscope.files
